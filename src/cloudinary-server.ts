@@ -443,42 +443,41 @@ export class CloudinaryServer {
       }
 
     async init() {
-        for (let i = 0; i < 10; i++) {
-            const initRes = await this.request("ui/initialize", {});
+        const initRes = await this.request("ui/initialize", {
+            subscriptions: {
+                toolInput: true,
+                toolResult: true
+            }
+        });
+
+        this.reportSize();
+
+        const upload =
+            initRes?.structuredContent?.upload ||
+            initRes?.result?.structuredContent?.upload ||
+            initRes?.toolResult?.structuredContent?.upload ||
+            initRes?.tool_result?.structuredContent?.upload;
+
+        if (upload) {
+            this.latestUpload = upload;
+            render(upload);
             this.reportSize();
-
-            const uploadFromInit =
-                initRes?.structuredContent?.upload ||
-                initRes?.result?.structuredContent?.upload ||
-                initRes?.toolResult?.structuredContent?.upload ||
-                initRes?.tool_result?.structuredContent?.upload;
-
-            if (uploadFromInit) {
-                this.latestUpload = uploadFromInit;
-                render(uploadFromInit);
-                this.reportSize();
-                return;
-            }
-
-            // ✅ ChatGPT extension fallback
-            const openai = window.openai;
-            const uploadFromOpenAI =
-                openai?.toolOutput?.upload ||
-                openai?.toolOutput?.structuredContent?.upload ||
-                openai?.toolOutput?.result?.structuredContent?.upload;
-
-            if (uploadFromOpenAI) {
-                this.latestUpload = uploadFromOpenAI;
-                render(uploadFromOpenAI);
-                this.reportSize();
-                return;
-            }
-
-            await new Promise(r => setTimeout(r, 150));
         }
 
-        console.warn("No upload data received after retries");
+        // ChatGPT extension fallback
+        const openai = window.openai;
+        const uploadFromOpenAI =
+            openai?.toolOutput?.upload ||
+            openai?.toolOutput?.structuredContent?.upload ||
+            openai?.toolOutput?.result?.structuredContent?.upload;
+
+        if (uploadFromOpenAI) {
+            this.latestUpload = uploadFromOpenAI;
+            render(uploadFromOpenAI);
+            this.reportSize();
+        }
     }
+
 
 
 
