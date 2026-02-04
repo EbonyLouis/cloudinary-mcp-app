@@ -404,19 +404,19 @@ export class CloudinaryServer {
         }
 
         // MCP Apps standard: tool result notification
-        // if (data.method === "ui/notifications/tool-result") {
-        //     const upload =
-        //         data.params?.result?.structuredContent?.upload ||
-        //         data.params?.structuredContent?.upload ||
-        //         data.params?.toolResult?.structuredContent?.upload ||
-        //         data.params?.tool_result?.structuredContent?.upload;
+        if (data.method === "ui/notifications/tool-result") {
+            const upload =
+                data.params?.result?.structuredContent?.upload ||
+                data.params?.structuredContent?.upload ||
+                data.params?.toolResult?.structuredContent?.upload ||
+                data.params?.tool_result?.structuredContent?.upload;
 
-        //     if (upload) {
-        //         this.latestUpload = upload;
-        //         render(upload);
-        //         this.reportSize();
-        //     }
-        // }
+            if (upload) {
+                this.latestUpload = upload;
+                render(upload);
+                this.reportSize();
+            }
+        }
 
         // host context changes (theme, etc.)
         if (data.method === "ui/notifications/host-context-changed") {
