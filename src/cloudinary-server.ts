@@ -149,56 +149,48 @@ export class CloudinaryServer {
     }));
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-        const { uri } = request.params;
-      
-        if (uri === UPLOAD_UI_URI) {
-          return {
-            contents: [
-              {
-                uri,
-                mimeType: "text/html;profile=mcp-app",
-                text: this.createDeterministicUploadUI(),
-                _meta: {
-                  ui: {
-                    csp: {
-                      connectDomains: ["https://res.cloudinary.com"],
-                      resourceDomains: ["https://res.cloudinary.com"],
-                    },
-                    prefersBorder: true,
+      const { uri } = request.params;
+
+      if (uri === UPLOAD_UI_URI) {
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "text/html;profile=mcp-app",
+              text: this.createDeterministicUploadUI(),
+              _meta: {
+                ui: {
+                  csp: {
+                    connectDomains: ["https://res.cloudinary.com"],
+                    resourceDomains: ["https://res.cloudinary.com"],
                   },
-      
-                  // Optional: OpenAI compatibility alias (safe to include even in MCP Apps mode)
-                  "openai/widgetCSP": {
-                    connect_domains: ["https://res.cloudinary.com"],
-                    resource_domains: ["https://res.cloudinary.com"],
-                  },
-                  "openai/widgetPrefersBorder": true,
+                  prefersBorder: true,
                 },
               },
-            ],
-          };
-        }
-      
-        if (uri === DEMO_UI_URI) {
-          return {
-            contents: [
-              {
-                uri,
-                mimeType: "text/html;profile=mcp-app",
-                text: this.createDemoUI(),
-                _meta: {
-                  ui: {
-                    prefersBorder: true,
-                  },
-                  "openai/widgetPrefersBorder": true,
+            },
+          ],
+        };
+      }
+
+      if (uri === DEMO_UI_URI) {
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "text/html;profile=mcp-app",
+              text: this.createDemoUI(),
+              _meta: {
+                ui: {
+                  prefersBorder: true,
                 },
               },
-            ],
-          };
-        }
-      
-        throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
-      });      
+            },
+          ],
+        };
+      }
+
+      throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
+    });
   }
 
   // ---------------- Upload logic ----------------
@@ -582,6 +574,11 @@ export class CloudinaryServer {
     window.addEventListener("load", () => mcp.reportSize());
   </script>
 </body>
+<div style="position:fixed;top:8px;right:8px;z-index:9999;
+background:#ff00ff;color:white;padding:6px 10px;border-radius:8px;
+font-weight:700;">
+MCP APPS UI v2026-02-04
+</div>
 </html>`;
   }
 
