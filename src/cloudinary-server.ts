@@ -443,30 +443,43 @@ export class CloudinaryServer {
       }
 
     async init() {
-        // Try initialize multiple times to catch late tool output
         for (let i = 0; i < 10; i++) {
             const initRes = await this.request("ui/initialize", {});
             this.reportSize();
 
-            const upload =
-            initRes?.structuredContent?.upload ||
-            initRes?.result?.structuredContent?.upload ||
-            initRes?.toolResult?.structuredContent?.upload ||
-            initRes?.tool_result?.structuredContent?.upload;
+            const uploadFromInit =
+                initRes?.structuredContent?.upload ||
+                initRes?.result?.structuredContent?.upload ||
+                initRes?.toolResult?.structuredContent?.upload ||
+                initRes?.tool_result?.structuredContent?.upload;
 
-            if (upload) {
-            this.latestUpload = upload;
-            render(upload);
-            this.reportSize();
-            return;
+            if (uploadFromInit) {
+                this.latestUpload = uploadFromInit;
+                render(uploadFromInit);
+                this.reportSize();
+                return;
             }
 
-            // wait 150ms before retry
+            // ✅ ChatGPT extension fallback
+            const openai = window.openai;
+            const uploadFromOpenAI =
+                openai?.toolOutput?.upload ||
+                openai?.toolOutput?.structuredContent?.upload ||
+                openai?.toolOutput?.result?.structuredContent?.upload;
+
+            if (uploadFromOpenAI) {
+                this.latestUpload = uploadFromOpenAI;
+                render(uploadFromOpenAI);
+                this.reportSize();
+                return;
+            }
+
             await new Promise(r => setTimeout(r, 150));
         }
 
         console.warn("No upload data received after retries");
     }
+
 
 
 
