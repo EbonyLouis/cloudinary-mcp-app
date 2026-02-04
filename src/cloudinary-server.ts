@@ -21,7 +21,7 @@ function requireEnv(name: string) {
  * Deterministic MCP Apps UI URI (portable across Goose + ChatGPT).
  * The UI hydrates from tool-result notifications / tool output.
  */
-const UPLOAD_UI_URI = "ui://cloudinary/upload-v2";
+const UPLOAD_UI_URI = "ui://cloudinary/upload-v3";
 const DEMO_UI_URI = "ui://cloudinary/demo";
 
 export class CloudinaryServer {
