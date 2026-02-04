@@ -404,19 +404,19 @@ export class CloudinaryServer {
         }
 
         // MCP Apps standard: tool result notification
-        if (data.method === "ui/notifications/tool-result") {
-            const upload =
-                data.params?.result?.structuredContent?.upload ||
-                data.params?.structuredContent?.upload ||
-                data.params?.toolResult?.structuredContent?.upload ||
-                data.params?.tool_result?.structuredContent?.upload;
+        // if (data.method === "ui/notifications/tool-result") {
+        //     const upload =
+        //         data.params?.result?.structuredContent?.upload ||
+        //         data.params?.structuredContent?.upload ||
+        //         data.params?.toolResult?.structuredContent?.upload ||
+        //         data.params?.tool_result?.structuredContent?.upload;
 
-            if (upload) {
-                this.latestUpload = upload;
-                render(upload);
-                this.reportSize();
-            }
-        }
+        //     if (upload) {
+        //         this.latestUpload = upload;
+        //         render(upload);
+        //         this.reportSize();
+        //     }
+        // }
 
         // host context changes (theme, etc.)
         if (data.method === "ui/notifications/host-context-changed") {
@@ -442,36 +442,18 @@ export class CloudinaryServer {
         window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
       }
 
-        async init() {
-            const initRes = await this.request("ui/initialize", {});
+    async init() {
+        const initRes = await this.request("ui/initialize", {});
+        this.reportSize();
+
+        const upload = initRes?.structuredContent?.upload;
+        if (upload) {
+            this.latestUpload = upload;
+            render(upload);
             this.reportSize();
-
-            // Some hosts include the latest tool result in the initialize response
-            const uploadFromInit =
-                initRes?.toolResult?.structuredContent?.upload ||
-                initRes?.tool_result?.structuredContent?.upload ||
-                initRes?.result?.structuredContent?.upload ||
-                initRes?.structuredContent?.upload;
-
-            if (uploadFromInit) {
-                this.latestUpload = uploadFromInit;
-                render(uploadFromInit);
-                this.reportSize();
-            }
-
-            // ChatGPT extension fallback (helps when host doesn’t emit tool-result to the iframe)
-            const openai = window.openai;
-            const uploadFromOpenAI =
-                openai?.toolOutput?.upload ||
-                openai?.toolOutput?.structuredContent?.upload ||
-                openai?.toolOutput?.result?.structuredContent?.upload;
-
-            if (uploadFromOpenAI) {
-                this.latestUpload = uploadFromOpenAI;
-                render(uploadFromOpenAI);
-                this.reportSize();
-            }
         }
+    }
+
 
 
       reportSize() {
