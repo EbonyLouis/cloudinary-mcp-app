@@ -47,146 +47,314 @@ export type ChatGptToolOutput = {
  * and wires actions back to ChatGPT using window.openai.sendFollowUpMessage, etc.
  */
 export function createChatGptTemplateUI(): string {
-  // NOTE: Keep it simple for the workshop. You can progressively move your existing fancy HTML here.
-  // TODO (you can narrate this live):
-  // - Replace this minimal UI with your nicer Cloudinary UI
-  // - Add error states + loading states
-  // - Add transformations panel, etc.
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Cloudinary Upload</title>
-    <style>
-      body { font-family: system-ui; padding: 16px; margin: 0; }
-      .card { border: 1px solid #e5e5e5; border-radius: 12px; padding: 14px; }
-      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-      img, video { max-width: 100%; border-radius: 12px; }
-      button { padding: 10px 12px; border-radius: 10px; border: 1px solid #ccc; background: white; cursor: pointer; }
-      button:hover { background: #f7f7f7; }
-      code { background: #f3f3f3; padding: 2px 6px; border-radius: 6px; }
-      .muted { color: #666; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h2 style="margin-top:0;">☁️ Cloudinary Upload</h2>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloudinary Upload Result</title>
+  <style>
+    html, body { height: 100%; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    *, *::before, *::after { box-sizing: inherit; }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 { margin: 0; font-size: 2em; font-weight: 300; }
+    .header .success-icon { font-size: 3em; margin-bottom: 10px; }
+    .content { padding: 30px; }
+
+    .preview-section { text-align: center; margin-bottom: 30px; }
+    .preview-section img, .preview-section video {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .info-card {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      border-left: 4px solid #4CAF50;
+    }
+    .info-card h3 { margin: 0 0 10px 0; color: #333; font-size: 1.1em; }
+    .info-card p { margin: 5px 0; color: #666; }
+    .info-card .value { font-weight: bold; color: #333; word-break: break-all; }
+
+    .actions { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+      color: white;
+    }
+    .btn-primary { background: linear-gradient(135deg, #007bff, #0056b3); }
+    .btn-secondary { background: linear-gradient(135deg, #6c757d, #545b62); }
+    .btn-success { background: linear-gradient(135deg, #28a745, #1e7e34); }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+
+    .copy-btn {
+      background: #17a2b8; color: white; border: none;
+      padding: 5px 10px; border-radius: 15px;
+      cursor: pointer; font-size: 12px; margin-top: 5px;
+    }
+    .copy-btn:hover { background: #138496; }
+
+    .transformations { margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px; }
+    .transformations h3 { margin-top: 0; color: #333; }
+
+    .transform-examples {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .transform-example {
+      text-align: center;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .transform-example img {
+      max-width: 100%;
+      height: 100px;
+      object-fit: cover;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .tag { background: #e9ecef; color: #495057; padding: 4px 12px; border-radius: 15px; font-size: 12px; }
+
+    .muted { color: rgba(255,255,255,0.9); margin-top: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="success-icon">✅</div>
+      <h1>Upload Successful!</h1>
+      <p id="subtitle">Your file has been uploaded to Cloudinary</p>
       <p class="muted" id="status">Waiting for tool output…</p>
-
-      <div id="preview" style="margin: 12px 0;"></div>
-      <div id="details"></div>
-
-      <div class="row" style="margin-top: 14px;">
-        <button id="memeBtn">🎭 Make meme caption</button>
-        <button id="tweetBtn">📱 Draft tweet</button>
-        <button id="copyBtn">🔗 Copy URL</button>
-      </div>
-
-      <p class="muted" style="margin-bottom:0;margin-top:12px;">
-        Data source: <code>window.openai.toolOutput</code>
-      </p>
     </div>
 
-    <script>
-      // ChatGPT-specific: window.openai is the widget runtime injected by ChatGPT.
-      // It exposes toolOutput (your structuredContent), plus helpers like:
-      // - sendFollowUpMessage
-      // - notifyIntrinsicHeight
-      // (Exact helpers may vary by host/runtime.)
+    <div class="content">
+      <div id="previewWrap" class="preview-section hidden">
+        <h2>Preview</h2>
+        <div id="preview"></div>
+      </div>
 
-      function getToolOutput() {
-        try {
-          return window.openai?.toolOutput || null;
-        } catch {
-          return null;
-        }
+      <div class="info-grid">
+        <div class="info-card">
+          <h3>File Information</h3>
+          <p>Public ID: <span class="value" id="publicId">—</span></p>
+          <p>Format: <span class="value" id="format">—</span></p>
+          <p>Type: <span class="value" id="type">—</span></p>
+          <p>Size: <span class="value" id="size">—</span></p>
+        </div>
+
+        <div class="info-card">
+          <h3>Upload Details</h3>
+          <p>Created: <span class="value" id="created">—</span></p>
+          <div id="tagsWrap" class="hidden">
+            <p>Tags:</p>
+            <div class="tags" id="tags"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="memeBtn">🎭 Make a Meme</button>
+        <a id="downloadBtn" class="btn btn-secondary" href="#" download>⬇️ Download</a>
+        <button class="btn btn-success" id="tweetBtn">📱 Tweet This</button>
+      </div>
+
+      <div id="transformWrap" class="transformations hidden">
+        <h3>🎨 Transformation Examples</h3>
+        <p>Cloudinary provides powerful on-the-fly transformations. Here are some examples:</p>
+        <div class="transform-examples" id="transforms"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function getUpload() {
+      try { return window.openai?.toolOutput?.upload || null; } catch { return null; }
+    }
+
+    function bytesToMb(bytes) {
+      if (typeof bytes !== "number") return "—";
+      return (bytes / 1024 / 1024).toFixed(2) + " MB";
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value ?? "—";
+    }
+
+    function show(id) { document.getElementById(id)?.classList.remove("hidden"); }
+    function hide(id) { document.getElementById(id)?.classList.add("hidden"); }
+
+    function render() {
+      const u = getUpload();
+      const statusEl = document.getElementById("status");
+      if (!u) {
+        statusEl.textContent = "Waiting for tool output… run the upload tool.";
+        return notifyHeight();
       }
 
-      function bytesToMb(bytes) {
-        if (typeof bytes !== "number") return "";
-        return (bytes / 1024 / 1024).toFixed(2) + " MB";
+      statusEl.textContent = "Upload loaded ✅";
+      const url = u.secure_url || u.url || "";
+      const isImage = u.resource_type === "image";
+      const isVideo = u.resource_type === "video";
+
+      document.getElementById("subtitle").textContent =
+        "Your " + (u.resource_type || "file") + " has been uploaded to Cloudinary";
+
+      setText("publicId", u.public_id);
+      setText("format", u.format || "—");
+      setText("type", u.resource_type || "—");
+      setText("size", bytesToMb(u.bytes));
+      setText("created", u.created_at || "—");
+
+      // Preview
+      if (url && (isImage || isVideo)) {
+        show("previewWrap");
+        document.getElementById("preview").innerHTML = isImage
+          ? '<img src="' + url + '" alt="Uploaded image" />'
+          : '<video controls><source src="' + url + '" /></video>';
+      } else {
+        hide("previewWrap");
+        document.getElementById("preview").innerHTML = "";
       }
 
-      function render() {
-        const out = getToolOutput();
-        const statusEl = document.getElementById("status");
-        const previewEl = document.getElementById("preview");
-        const detailsEl = document.getElementById("details");
+      // Download link
+      const dl = document.getElementById("downloadBtn");
+      dl.href = url || "#";
 
-        if (!out || !out.upload) {
-          statusEl.textContent = "Waiting for tool output… run the upload tool.";
-          previewEl.innerHTML = "";
-          detailsEl.innerHTML = "";
-          return;
-        }
-
-        const u = out.upload;
-        statusEl.textContent = "Upload loaded ✅";
-
-        const url = u.secure_url || u.url || "";
-        const isImage = u.resource_type === "image";
-        const isVideo = u.resource_type === "video";
-
-        if (url && (isImage || isVideo)) {
-          previewEl.innerHTML = isImage
-            ? \`<img src="\${url}" alt="Uploaded image" />\`
-            : \`<video controls><source src="\${url}" /></video>\`;
-        } else {
-          previewEl.innerHTML = "";
-        }
-
-        detailsEl.innerHTML = \`
-          <p><strong>public_id:</strong> <code>\${u.public_id}</code></p>
-          <p><strong>type:</strong> <code>\${u.resource_type}</code> \${u.format ? \`(<code>\${u.format}</code>)\` : ""}</p>
-          \${u.bytes ? \`<p><strong>size:</strong> \${bytesToMb(u.bytes)}</p>\` : ""}
-          \${u.created_at ? \`<p><strong>created:</strong> \${u.created_at}</p>\` : ""}
-          \${url ? \`<p><strong>url:</strong> <code>\${url}</code></p>\` : ""}
-        \`;
-
-        // Tell ChatGPT our iframe height so it sizes nicely.
-        try {
-          window.openai?.notifyIntrinsicHeight?.(document.body.scrollHeight);
-        } catch {}
+      // Tags
+      const tags = Array.isArray(u.tags) ? u.tags : [];
+      if (tags.length) {
+        show("tagsWrap");
+        document.getElementById("tags").innerHTML =
+          tags.map(t => '<span class="tag">' + t + '</span>').join("");
+      } else {
+        hide("tagsWrap");
+        document.getElementById("tags").innerHTML = "";
       }
 
-      async function followUp(text) {
-        // ChatGPT-specific: sendFollowUpMessage posts a user-visible message from the widget.
-        if (!window.openai?.sendFollowUpMessage) {
-          alert("window.openai.sendFollowUpMessage not available.");
-          return;
-        }
-        await window.openai.sendFollowUpMessage({ message: text });
+      // Transformations (images only)
+      if (isImage && url.includes("/upload/")) {
+        show("transformWrap");
+        const transforms = [
+          { label: "Resized (200x200)", t: "w_200,h_200,c_fill" },
+          { label: "Sepia Effect", t: "e_sepia" },
+          { label: "Circular Crop", t: "w_200,h_200,c_fill,r_max" },
+          { label: "Blur Effect", t: "e_blur:300" },
+        ];
+        const html = transforms.map(({label, t}) => {
+          const tu = url.replace("/upload/", "/upload/" + t + "/");
+          return \`
+            <div class="transform-example">
+              <img src="\${tu}" alt="\${label}" />
+              <p><strong>\${label}</strong></p>
+              <button class="copy-btn" data-copy="\${tu}">Copy URL</button>
+            </div>\`;
+        }).join("");
+        document.getElementById("transforms").innerHTML = html;
+      } else {
+        hide("transformWrap");
+        document.getElementById("transforms").innerHTML = "";
       }
 
-      document.getElementById("memeBtn").addEventListener("click", async () => {
-        const out = getToolOutput();
-        const url = out?.upload?.secure_url || out?.upload?.url || "";
-        await followUp(\`Create a funny meme caption for this upload. Link: \${url}\`);
-      });
+      notifyHeight();
+    }
 
-      document.getElementById("tweetBtn").addEventListener("click", async () => {
-        const out = getToolOutput();
-        const url = out?.upload?.secure_url || out?.upload?.url || "";
-        await followUp(\`Draft a tweet about this Cloudinary upload and include this link: \${url}\`);
-      });
+    async function followUp(text) {
+      if (!window.openai?.sendFollowUpMessage) {
+        alert("sendFollowUpMessage not available in this host.");
+        return;
+      }
+      await window.openai.sendFollowUpMessage({ message: text });
+    }
 
-      document.getElementById("copyBtn").addEventListener("click", async () => {
-        const out = getToolOutput();
-        const url = out?.upload?.secure_url || out?.upload?.url || "";
-        if (!url) return alert("No URL to copy.");
-        await navigator.clipboard.writeText(url);
-        alert("Copied!");
-      });
+    function notifyHeight() {
+      try { window.openai?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {}
+    }
 
-      // Simple polling so the template updates after each tool call.
-      // TODO: Replace with a runtime subscription if you build a richer UI framework later.
-      setInterval(render, 400);
-      render();
-    </script>
-  </body>
+    document.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.("button");
+      if (!btn) return;
+
+      // Copy transform URL buttons
+      if (btn.classList.contains("copy-btn")) {
+        const url = btn.getAttribute("data-copy") || "";
+        if (!url) return;
+        try { await navigator.clipboard.writeText(url); alert("Copied!"); }
+        catch { alert("Copy failed (clipboard blocked)."); }
+        return;
+      }
+    });
+
+    document.getElementById("memeBtn").addEventListener("click", async () => {
+      const u = getUpload();
+      const url = u?.secure_url || u?.url || "";
+      await followUp("Create a funny meme caption for the image I just uploaded. Link: " + url);
+    });
+
+    document.getElementById("tweetBtn").addEventListener("click", async () => {
+      const u = getUpload();
+      const url = u?.secure_url || u?.url || "";
+      await followUp("Draft a tweet about this Cloudinary upload and include this link: " + url);
+    });
+
+    // Re-render when toolOutput updates (simple polling is fine for workshop)
+    setInterval(render, 400);
+    render();
+    window.addEventListener("load", notifyHeight);
+    new ResizeObserver(notifyHeight).observe(document.documentElement);
+  </script>
+</body>
 </html>`;
 }
+
 
 /**
  * 2) Register the ChatGPT template resource in YOUR resources system.
