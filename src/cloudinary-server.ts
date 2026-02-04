@@ -21,7 +21,7 @@ function requireEnv(name: string) {
  * Deterministic MCP Apps UI URI (portable across Goose + ChatGPT).
  * The UI hydrates from tool-result notifications / tool output.
  */
-const UPLOAD_UI_URI = "ui://cloudinary/upload-v4";
+const UPLOAD_UI_URI = "ui://cloudinary/upload-v5";
 const DEMO_UI_URI = "ui://cloudinary/demo";
 
 export class CloudinaryServer {
@@ -405,18 +405,24 @@ export class CloudinaryServer {
 
         // MCP Apps standard: tool result notification
         if (data.method === "ui/notifications/tool-result") {
+        // In ChatGPT quickstart, params IS the tool result
+            const p = data.params;
+
             const upload =
-                data.params?.result?.structuredContent?.upload ||
-                data.params?.structuredContent?.upload ||
-                data.params?.toolResult?.structuredContent?.upload ||
-                data.params?.tool_result?.structuredContent?.upload;
+                p?.structuredContent?.upload ||                 // ✅ most common
+                p?.result?.structuredContent?.upload ||         // some hosts wrap
+                p?.toolResult?.structuredContent?.upload ||     // some hosts wrap
+                p?.tool_result?.structuredContent?.upload;
 
             if (upload) {
                 this.latestUpload = upload;
                 render(upload);
                 this.reportSize();
+            } else {
+                console.log("tool-result received but no upload found. Full params:", p);
             }
         }
+
 
         // host context changes (theme, etc.)
         if (data.method === "ui/notifications/host-context-changed") {
@@ -442,10 +448,16 @@ export class CloudinaryServer {
         window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
       }
 
-        async init() {
-            await this.request("ui/initialize", {});
-            this.reportSize();
-        }
+    async init() {
+    const appInfo = { name: "cloudinary-upload", version: "1.0.0" };
+    const appCapabilities = {};
+    const protocolVersion = "2026-01-26";
+
+    await this.request("ui/initialize", { appInfo, appCapabilities, protocolVersion });
+    this.notify("ui/notifications/initialized", {}); // ✅ REQUIRED
+    this.reportSize();
+    }
+
 
 
       reportSize() {
