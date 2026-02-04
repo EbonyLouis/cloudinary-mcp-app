@@ -9,14 +9,16 @@ import "dotenv/config";
 
 const app = express();
 
-// CORS: expose the session id header so browser-based hosts can read it
 app.use(
   cors({
     origin: "*",
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
     exposedHeaders: ["Mcp-Session-Id", "Link"],
-    allowedHeaders: ["Content-Type", "mcp-session-id"],
+    allowedHeaders: ["Content-Type", "mcp-session-id", "Accept", "Authorization"],
   })
 );
+
+app.options("/mcp", cors());
 
 app.use(express.json({ limit: "25mb" }));
 
@@ -29,9 +31,6 @@ app.get("/", (_req, res) => {
 // ----------------------------------------------------------------------------
 const transportsBySession = new Map<string, StreamableHTTPServerTransport>();
 const serversBySession = new Map<string, CloudinaryServer>();
-
-// Optional: basic TTL cleanup if you want (safe to omit for tomorrow’s demo)
-// const LAST_SEEN = new Map<string, number>();
 
 function getSessionId(req: express.Request): string | undefined {
   const v = req.headers["mcp-session-id"];
@@ -53,7 +52,6 @@ app.post("/mcp", async (req, res) => {
       return res.status(404).json({ error: { message: "Session not found" } });
     }
     try {
-      // LAST_SEEN.set(sessionIdHeader, Date.now());
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
       console.error("Error handling /mcp (existing session):", err);
@@ -72,8 +70,6 @@ app.post("/mcp", async (req, res) => {
   // Create new session
   const server = new CloudinaryServer();
 
-  // Create transport WITH a session id generator
-  // IMPORTANT: store the transport once the session is initialized
   let transport!: StreamableHTTPServerTransport;
 
   transport = new StreamableHTTPServerTransport({
@@ -81,13 +77,11 @@ app.post("/mcp", async (req, res) => {
     onsessioninitialized: (sid) => {
       transportsBySession.set(sid, transport);
       serversBySession.set(sid, server);
-      // LAST_SEEN.set(sid, Date.now());
 
       // Cleanup when session closes
       transport.onclose = async () => {
         transportsBySession.delete(sid);
         serversBySession.delete(sid);
-        // LAST_SEEN.delete(sid);
         try {
           await transport.close();
         } catch {}
@@ -104,7 +98,6 @@ app.post("/mcp", async (req, res) => {
   } catch (err) {
     console.error("Error handling /mcp (initialize):", err);
 
-    // If we failed before onsessioninitialized ran, close everything here
     try {
       await transport.close();
     } catch {}
@@ -128,7 +121,6 @@ async function handleSessionRequest(req: express.Request, res: express.Response)
   if (!transport) return res.status(404).send("Session not found");
 
   try {
-    // LAST_SEEN.set(sessionId, Date.now());
     await transport.handleRequest(req, res);
   } catch (err) {
     console.error(`Error handling /mcp (${req.method}) for session ${sessionId}:`, err);

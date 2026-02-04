@@ -11,42 +11,23 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
 import { readFile } from "node:fs/promises";
 
-import {
-  registerChatGptTemplate,
-  addChatGptToolMeta,
-  buildChatGptStructuredContent,
-  isChatGptTemplateUri,
-  createChatGptTemplateUI
-} from "./chatgpt-adapter.js";
-
-class UiStore {
-    private map = new Map<string, string>();
-  
-    set(uri: string, html: string) {
-      this.map.set(uri, html);
-    }
-  
-    get(uri: string) {
-      return this.map.get(uri);
-    }
-  
-    keys() {
-      return this.map.keys();
-    }
-  }
-
 function requireEnv(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing required env var: ${name}`);
   return v;
 }
 
+/**
+ * Deterministic MCP Apps UI URI (portable across Goose + ChatGPT).
+ * The UI hydrates from tool-result notifications / tool output.
+ */
+const UPLOAD_UI_URI = "ui://cloudinary/upload";
+const DEMO_UI_URI = "ui://cloudinary/demo";
+
 export class CloudinaryServer {
   private server: Server;
-  private uiStore = new UiStore();
 
   constructor() {
-    // Cloudinary config
     cloudinary.config({
       cloud_name: requireEnv("CLOUDINARY_CLOUD_NAME"),
       api_key: requireEnv("CLOUDINARY_API_KEY"),
@@ -59,11 +40,6 @@ export class CloudinaryServer {
     );
 
     this.setupHandlers();
-
-    // ✅ ChatGPT needs a stable template resource available immediately
-    registerChatGptTemplate(this.uiStore as any);
-
-
     this.server.onerror = (err) => console.error("[MCP Error]", err);
   }
 
@@ -80,8 +56,7 @@ export class CloudinaryServer {
   private setupHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
-        // ✅ ChatGPT: tool meta points to the one stable template
-        addChatGptToolMeta({
+        {
           name: "upload",
           description:
             "Upload media (images/videos) to Cloudinary. `file_path` for local; `file` for URL/data URI. Returns details + opens UI.",
@@ -107,12 +82,19 @@ export class CloudinaryServer {
             },
             required: [],
           },
-        }),
+          // ✅ MCP Apps standard: declare the UI resource here
+          _meta: {
+            ui: { resourceUri: UPLOAD_UI_URI },
+          },
+        },
 
         {
           name: "show_demo_app",
           description: "Shows a tiny MCP App demo UI (sanity check).",
           inputSchema: { type: "object", properties: {}, required: [] },
+          _meta: {
+            ui: { resourceUri: DEMO_UI_URI },
+          },
         },
       ],
     }));
@@ -130,75 +112,85 @@ export class CloudinaryServer {
       if (request.params.name === "upload") return this.handleUpload(args);
 
       if (request.params.name === "show_demo_app") {
-        const uri = "ui://cloudinary/demo";
-        this.uiStore.set(
-          uri,
-          `<!doctype html><html><body style="font-family:system-ui;padding:16px">
-            <h2>✅ Demo UI</h2>
-            <p>If you can see this, resources/read is working.</p>
-          </body></html>`
-        );
-        return { content: [{ type: "text", text: "Opening demo app…" }], _meta: { ui: { resourceUri: uri } } };
+        return {
+          content: [{ type: "text", text: "Opening demo app…" }],
+          _meta: { ui: { resourceUri: DEMO_UI_URI } },
+          structuredContent: {
+            demo: {
+              message: "If you can see the demo UI, resources/read works ✅",
+              timestamp: new Date().toISOString(),
+            },
+          },
+        };
       }
 
-      throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
+      throw new McpError(
+        ErrorCode.MethodNotFound,
+        `Unknown tool: ${request.params.name}`
+      );
     });
 
-    // ✅ Resources: return skybridge only for the template URI
+    // ✅ Deterministic resources list (no per-upload URIs)
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-      resources: Array.from(this.uiStore.keys()).map((uri) => {
-        const isTemplate = isChatGptTemplateUri(uri);
-        return {
-          uri,
-          name: isTemplate ? "Cloudinary (ChatGPT Template)" : "Cloudinary UI",
-          description: isTemplate ? "ChatGPT Apps SDK template" : "Goose MCP App UI",
-          mimeType: isTemplate ? "text/html+skybridge" : "text/html;profile=mcp-app",
-        };
-      }),
+      resources: [
+        {
+          uri: UPLOAD_UI_URI,
+          name: "Cloudinary Upload UI",
+          description: "Deterministic MCP App UI for showing the latest upload",
+          mimeType: "text/html;profile=mcp-app",
+        },
+        {
+          uri: DEMO_UI_URI,
+          name: "Cloudinary Demo UI",
+          description: "Sanity-check MCP App UI",
+          mimeType: "text/html;profile=mcp-app",
+        },
+      ],
     }));
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-        const { uri } = request.params;
-      
-        const isTemplate = isChatGptTemplateUri(uri);
-      
-        // ✅ Deterministic: always generate template HTML on demand
-        const html = isTemplate ? createChatGptTemplateUI() : this.uiStore.get(uri);
-      
-        if (!html) {
-          throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
-        }
-      
-        const mimeType = isTemplate ? "text/html+skybridge" : "text/html;profile=mcp-app";
-      
+      const { uri } = request.params;
+
+      if (uri === UPLOAD_UI_URI) {
         return {
           contents: [
             {
               uri,
-              mimeType,
-              text: html,
-              _meta: isTemplate
-                ? {
-                    "openai/widgetDescription": "Cloudinary upload viewer",
-                    "openai/widgetCSP": {
-                      connect_domains: ["https://res.cloudinary.com"],
-                      resource_domains: ["https://res.cloudinary.com"],
-                    },
-                    "openai/widgetPrefersBorder": true,
-                  }
-                : {
-                    ui: {
-                      csp: {
-                        connectDomains: ["https://res.cloudinary.com"],
-                        resourceDomains: ["https://res.cloudinary.com"],
-                      },
-                      prefersBorder: true,
-                    },
+              mimeType: "text/html;profile=mcp-app",
+              text: this.createDeterministicUploadUI(),
+              _meta: {
+                ui: {
+                  csp: {
+                    connectDomains: ["https://res.cloudinary.com"],
+                    resourceDomains: ["https://res.cloudinary.com"],
                   },
+                  prefersBorder: true,
+                },
+              },
             },
           ],
         };
-    });      
+      }
+
+      if (uri === DEMO_UI_URI) {
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "text/html;profile=mcp-app",
+              text: this.createDemoUI(),
+              _meta: {
+                ui: {
+                  prefersBorder: true,
+                },
+              },
+            },
+          ],
+        };
+      }
+
+      throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
+    });
   }
 
   // ---------------- Upload logic ----------------
@@ -268,29 +260,22 @@ export class CloudinaryServer {
         bytes: result.bytes,
         url: result.url,
         secure_url: result.secure_url,
+        tags: result.tags || [],
       };
 
-      // Goose UI resource
-      const uri = `ui://cloudinary-upload/${result.public_id}`;
-      this.uiStore.set(uri, this.createUploadResultUI(result));
-
       return {
-        content: [{ type: "text", text: `🎉 Upload successful!\n\n${JSON.stringify(response, null, 2)}` }],
+        content: [
+          {
+            type: "text",
+            text: `🎉 Upload successful!\n\n${JSON.stringify(response, null, 2)}`,
+          },
+        ],
 
-        // ✅ ChatGPT uses this as window.openai.toolOutput
-        structuredContent: buildChatGptStructuredContent({
-          public_id: response.public_id,
-          resource_type: response.resource_type,
-          format: response.format,
-          bytes: response.bytes,
-          created_at: response.created_at,
-          secure_url: response.secure_url,
-          url: response.url,
-          tags: result.tags,
-        }),
+        // ✅ This is what the UI hydrates from (portable)
+        structuredContent: { upload: response },
 
-        // ✅ Goose uses this to open the MCP App UI
-        _meta: { ui: { resourceUri: uri } },
+        // ✅ Always open the SAME deterministic UI resource
+        _meta: { ui: { resourceUri: UPLOAD_UI_URI } },
       };
     } catch (err) {
       throw new McpError(
@@ -300,14 +285,16 @@ export class CloudinaryServer {
     }
   }
 
-  // Keep your existing fancy HTML here (unchanged)
-  private createUploadResultUI(result: UploadApiResponse): string {
-    const isImage = result.resource_type === "image";
-    const isVideo = result.resource_type === "video";
-    // For workshop: you can keep your full UI.
-    // I'm keeping it minimal here so the file isn't 1000 lines.
-    return `
-<!DOCTYPE html>
+  // ---------------- Deterministic MCP Apps UI ----------------
+
+  /**
+   * This UI is deterministic. It does NOT bake result.* into the HTML.
+   * It hydrates from MCP Apps notifications (tool-result) and/or host context.
+   */
+  private createDeterministicUploadUI(): string {
+    // Note: We keep your original CSS so it can match Goose visually.
+    // The only change is: render uses data received from tool-result (structuredContent.upload).
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -342,6 +329,7 @@ export class CloudinaryServer {
     .transform-example img { max-width: 100%; height: 100px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; }
     .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .tag { background: #e9ecef; color: #495057; padding: 4px 12px; border-radius: 15px; font-size: 12px; }
+    .muted { color: #666; }
   </style>
 </head>
 <body>
@@ -349,87 +337,56 @@ export class CloudinaryServer {
     <div class="header">
       <div class="success-icon">✅</div>
       <h1>Upload Successful!</h1>
-      <p>Your ${result.resource_type} has been uploaded to Cloudinary</p>
+      <p id="subtitle" class="muted" style="color:rgba(255,255,255,0.9)">Waiting for upload data…</p>
     </div>
 
     <div class="content">
-      ${isImage || isVideo ? `
-      <div class="preview-section">
+      <div id="previewRoot" class="preview-section" style="display:none;">
         <h2>Preview</h2>
-        ${isImage ? `<img src="${result.secure_url}" alt="Uploaded image" />` : `
-          <video controls>
-            <source src="${result.secure_url}" type="video/${result.format}">
-            Your browser does not support the video tag.
-          </video>`}
-      </div>` : ""}
+        <div id="preview"></div>
+      </div>
 
       <div class="info-grid">
         <div class="info-card">
           <h3>File Information</h3>
-          <p>Public ID: <span class="value">${result.public_id}</span></p>
-          <p>Format: <span class="value">${result.format}</span></p>
-          <p>Type: <span class="value">${result.resource_type}</span></p>
-          <p>Size: <span class="value">${(result.bytes / 1024 / 1024).toFixed(2)} MB</span></p>
+          <p>Public ID: <span class="value" id="publicId">—</span></p>
+          <p>Format: <span class="value" id="format">—</span></p>
+          <p>Type: <span class="value" id="type">—</span></p>
+          <p>Size: <span class="value" id="size">—</span></p>
         </div>
 
         <div class="info-card">
           <h3>Upload Details</h3>
-          <p>Version: <span class="value">${result.version}</span></p>
-          <p>Created: <span class="value">${new Date(result.created_at).toLocaleString()}</span></p>
-          <p>Signature: <span class="value">${result.signature.substring(0, 20)}...</span></p>
-          ${result.tags && result.tags.length > 0 ? `
+          <p>Created: <span class="value" id="created">—</span></p>
+          <p>URL: <span class="value" id="url">—</span></p>
+          <div id="tagsRoot" style="display:none;">
             <p>Tags:</p>
-            <div class="tags">
-              ${result.tags.map(tag => `<span class="tag">${tag}</span>`).join("")}
-            </div>` : ""}
+            <div class="tags" id="tags"></div>
+          </div>
         </div>
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary" onclick="makeMeme()">🎭 Make a Meme</button>
-        <a href="${result.secure_url}" download class="btn btn-secondary">⬇️ Download</a>
-        <button class="btn btn-success" onclick="shareOnTwitter()">📱 Tweet This</button>
+        <button class="btn btn-primary" id="memeBtn">🎭 Make a Meme</button>
+        <a href="#" id="downloadLink" class="btn btn-secondary" style="pointer-events:none;opacity:.6">⬇️ Download</a>
+        <button class="btn btn-success" id="tweetBtn">📱 Tweet This</button>
       </div>
 
-      ${isImage ? `
-      <div class="transformations">
+      <div class="transformations" id="transformRoot" style="display:none;">
         <h3>🎨 Transformation Examples</h3>
         <p>Cloudinary provides powerful on-the-fly transformations. Here are some examples:</p>
-        <div class="transform-examples">
-          <div class="transform-example">
-            <img src="${result.secure_url.replace("/upload/", "/upload/w_200,h_200,c_fill/")}" alt="Resized" />
-            <p><strong>Resized (200x200)</strong></p>
-            <button class="copy-btn" onclick="copyToClipboard('${result.secure_url.replace("/upload/", "/upload/w_200,h_200,c_fill/")}')">Copy URL</button>
-          </div>
-          <div class="transform-example">
-            <img src="${result.secure_url.replace("/upload/", "/upload/e_sepia/")}" alt="Sepia effect" />
-            <p><strong>Sepia Effect</strong></p>
-            <button class="copy-btn" onclick="copyToClipboard('${result.secure_url.replace("/upload/", "/upload/e_sepia/")}')">Copy URL</button>
-          </div>
-          <div class="transform-example">
-            <img src="${result.secure_url.replace("/upload/", "/upload/w_200,h_200,c_fill,r_max/")}" alt="Circular" />
-            <p><strong>Circular Crop</strong></p>
-            <button class="copy-btn" onclick="copyToClipboard('${result.secure_url.replace("/upload/", "/upload/w_200,h_200,c_fill,r_max/")}')">Copy URL</button>
-          </div>
-          <div class="transform-example">
-            <img src="${result.secure_url.replace("/upload/", "/upload/e_blur:300/")}" alt="Blurred" />
-            <p><strong>Blur Effect</strong></p>
-            <button class="copy-btn" onclick="copyToClipboard('${result.secure_url.replace("/upload/", "/upload/e_blur:300/")}')">Copy URL</button>
-          </div>
-        </div>
-      </div>` : ""}
+        <div class="transform-examples" id="transformExamples"></div>
+      </div>
     </div>
   </div>
 
   <script>
     // ----- MCP Apps JSON-RPC Client -----
-    // MCP Apps standardize communication as JSON-RPC instead of custom message types
-
     class McpAppClient {
       constructor() {
         this.pending = new Map();
         this.id = 0;
-        this.hostContext = null;
+        this.latestUpload = null;
         window.addEventListener("message", (e) => this.onMessage(e));
       }
 
@@ -446,9 +403,19 @@ export class CloudinaryServer {
           return;
         }
 
+        // MCP Apps standard: tool result notification
+        if (data.method === "ui/notifications/tool-result") {
+          const upload = data.params?.result?.structuredContent?.upload;
+          if (upload) {
+            this.latestUpload = upload;
+            render(upload);
+            this.reportSize();
+          }
+        }
+
         // host context changes (theme, etc.)
         if (data.method === "ui/notifications/host-context-changed") {
-          if (data.params?.theme) document.body.className = data.params.theme;
+          // Optional: respond to theme changes if you want
         }
       }
 
@@ -457,7 +424,6 @@ export class CloudinaryServer {
           const id = ++this.id;
           this.pending.set(id, { resolve, reject });
           window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
-
           setTimeout(() => {
             if (this.pending.has(id)) {
               this.pending.delete(id);
@@ -472,13 +438,7 @@ export class CloudinaryServer {
       }
 
       async init() {
-        const res = await this.request("ui/initialize", {});
-        this.hostContext = res?.hostContext;
-
-        if (this.hostContext?.theme) {
-          document.body.className = this.hostContext.theme;
-        }
-
+        await this.request("ui/initialize", {});
         this.reportSize();
       }
 
@@ -491,62 +451,192 @@ export class CloudinaryServer {
       }
     }
 
-    const mcpApp = new McpAppClient();
-    mcpApp.init().catch(console.error);
-
-    // Existing helper
-    function copyToClipboard(text) {
-      navigator.clipboard.writeText(text).then(function() {
-        const notification = document.createElement("div");
-        notification.textContent = "URL copied to clipboard!";
-        notification.style.cssText = \`
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #4CAF50;
-          color: white;
-          padding: 15px 20px;
-          border-radius: 25px;
-          box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-          z-index: 1000;
-          font-weight: 500;
-        \`;
-        document.body.appendChild(notification);
-
-        setTimeout(() => document.body.removeChild(notification), 3000);
-      }).catch(function(err) {
-        console.error("Could not copy text: ", err);
-        alert("Failed to copy URL to clipboard");
-      });
+    function bytesToMb(bytes) {
+      if (typeof bytes !== "number") return "—";
+      return (bytes / 1024 / 1024).toFixed(2) + " MB";
     }
 
-    // hover effects
-    document.querySelectorAll(".btn").forEach(btn => {
-      btn.addEventListener("mouseenter", function() { this.style.transform = "translateY(-2px)"; });
-      btn.addEventListener("mouseleave", function() { this.style.transform = "translateY(0)"; });
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    function render(u) {
+      document.getElementById("subtitle").textContent =
+        "Your " + (u.resource_type || "asset") + " has been uploaded to Cloudinary";
+
+      document.getElementById("publicId").textContent = u.public_id || "—";
+      document.getElementById("format").textContent = u.format || "—";
+      document.getElementById("type").textContent = u.resource_type || "—";
+      document.getElementById("size").textContent = bytesToMb(u.bytes);
+      document.getElementById("created").textContent = u.created_at || "—";
+
+      const url = u.secure_url || u.url || "";
+      document.getElementById("url").textContent = url ? url : "—";
+
+      // Download link
+      const dl = document.getElementById("downloadLink");
+      if (url) {
+        dl.href = url;
+        dl.style.pointerEvents = "auto";
+        dl.style.opacity = "1";
+      } else {
+        dl.href = "#";
+        dl.style.pointerEvents = "none";
+        dl.style.opacity = ".6";
+      }
+
+      // Preview
+      const isImage = u.resource_type === "image";
+      const isVideo = u.resource_type === "video";
+
+      const previewRoot = document.getElementById("previewRoot");
+      const preview = document.getElementById("preview");
+      if (url && (isImage || isVideo)) {
+        previewRoot.style.display = "block";
+        preview.innerHTML = isImage
+          ? '<img src="' + esc(url) + '" alt="Uploaded image" />'
+          : '<video controls><source src="' + esc(url) + '"></video>';
+      } else {
+        previewRoot.style.display = "none";
+        preview.innerHTML = "";
+      }
+
+      // Tags
+      const tags = Array.isArray(u.tags) ? u.tags : [];
+      const tagsRoot = document.getElementById("tagsRoot");
+      const tagsEl = document.getElementById("tags");
+      if (tags.length) {
+        tagsRoot.style.display = "block";
+        tagsEl.innerHTML = tags.map(t => '<span class="tag">' + esc(t) + '</span>').join("");
+      } else {
+        tagsRoot.style.display = "none";
+        tagsEl.innerHTML = "";
+      }
+
+      // Transformations (images only)
+      const transformRoot = document.getElementById("transformRoot");
+      const transformExamples = document.getElementById("transformExamples");
+      if (isImage && url) {
+        transformRoot.style.display = "block";
+        const mk = (label, transformedUrl) => {
+          return '<div class="transform-example">' +
+            '<img src="' + esc(transformedUrl) + '" alt="' + esc(label) + '" />' +
+            '<p><strong>' + esc(label) + '</strong></p>' +
+            '<button class="copy-btn" data-copy="' + esc(transformedUrl) + '">Copy URL</button>' +
+          '</div>';
+        };
+        const resized = url.replace("/upload/", "/upload/w_200,h_200,c_fill/");
+        const sepia = url.replace("/upload/", "/upload/e_sepia/");
+        const circle = url.replace("/upload/", "/upload/w_200,h_200,c_fill,r_max/");
+        const blur = url.replace("/upload/", "/upload/e_blur:300/");
+
+        transformExamples.innerHTML =
+          mk("Resized (200x200)", resized) +
+          mk("Sepia Effect", sepia) +
+          mk("Circular Crop", circle) +
+          mk("Blur Effect", blur);
+
+        transformExamples.querySelectorAll("button[data-copy]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const val = btn.getAttribute("data-copy") || "";
+            await navigator.clipboard.writeText(val);
+            alert("Copied!");
+          });
+        });
+      } else {
+        transformRoot.style.display = "none";
+        transformExamples.innerHTML = "";
+      }
+    }
+
+    const mcp = new McpAppClient();
+    mcp.init().catch(console.error);
+
+    document.getElementById("memeBtn").addEventListener("click", async () => {
+      const url = mcp.latestUpload?.secure_url || mcp.latestUpload?.url || "";
+      await mcp.sendChat(
+        "Create a funny meme caption for the image I just uploaded. Link: " + url
+      );
     });
 
-    // Resize handling for MCP Apps
-    const resizeObserver = new ResizeObserver(() => mcpApp.reportSize());
-    resizeObserver.observe(document.documentElement);
-    window.addEventListener("load", () => mcpApp.reportSize());
-
-    // Instead of MCP-UI's { type: "prompt" }
-   // MCP Apps uses a real method: ui/message
-    async function makeMeme() {
-      await mcpApp.sendChat(
-        "Create a funny meme caption for the image I just uploaded. Make it humorous and engaging, following popular meme formats."
+    document.getElementById("tweetBtn").addEventListener("click", async () => {
+      const url = mcp.latestUpload?.secure_url || mcp.latestUpload?.url || "";
+      await mcp.sendChat(
+        "Draft a tweet about this Cloudinary upload and include this link: " + url
       );
-    }
+    });
 
-    
-    async function shareOnTwitter() {
-      await mcpApp.sendChat(
-        "Draft a tweet about this Cloudinary upload and include this link: ${result.secure_url}"
-      );
-    }
+    // Keep size updated
+    const ro = new ResizeObserver(() => mcp.reportSize());
+    ro.observe(document.documentElement);
+    window.addEventListener("load", () => mcp.reportSize());
   </script>
 </body>
+</html>`;
+  }
+
+  private createDemoUI(): string {
+    return `<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+  <body style="font-family: system-ui; padding: 16px;">
+    <h2>✅ Cloudinary MCP App Demo</h2>
+    <p class="muted">If you can see this, resources/read is working.</p>
+    <button id="btn" style="padding: 10px 12px; border-radius: 8px; border: 1px solid #ccc; cursor:pointer;">
+      Send message to chat
+    </button>
+
+    <script>
+      class McpAppClient {
+        constructor() {
+          this.pending = new Map();
+          this.id = 0;
+          window.addEventListener("message", (e) => this.onMessage(e));
+        }
+        onMessage(event) {
+          const data = event.data;
+          if (!data || typeof data !== "object") return;
+          if ("id" in data && this.pending.has(data.id)) {
+            const { resolve, reject } = this.pending.get(data.id);
+            this.pending.delete(data.id);
+            if (data.error) reject(new Error(data.error.message));
+            else resolve(data.result);
+            return;
+          }
+        }
+        request(method, params) {
+          return new Promise((resolve, reject) => {
+            const id = ++this.id;
+            this.pending.set(id, { resolve, reject });
+            window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+            setTimeout(() => {
+              if (this.pending.has(id)) {
+                this.pending.delete(id);
+                reject(new Error("Request timed out"));
+              }
+            }, 30000);
+          });
+        }
+        notify(method, params) {
+          window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+        }
+        async init() {
+          await this.request("ui/initialize", {});
+          this.notify("ui/notifications/size-changed", { height: document.body.scrollHeight });
+        }
+        async sendChat(text) {
+          return this.request("ui/message", { content: { type: "text", text } });
+        }
+      }
+      const mcp = new McpAppClient();
+      mcp.init().catch(console.error);
+      document.getElementById("btn").addEventListener("click", async () => {
+        await mcp.sendChat("hi from the Cloudinary MCP App demo 👋");
+      });
+    </script>
+  </body>
 </html>`;
   }
 }
