@@ -1,117 +1,217 @@
-# Cloudinary MCP Server
+# Cloudinary MCP App → ChatGPT Workshop
 
-This MCP server provides tools for uploading images and videos to Cloudinary through Claude Desktop and compatible MCP clients.
+A Streamable HTTP MCP server that uploads images/videos to Cloudinary and exposes a rich interactive UI that works in:
 
-<a href="https://glama.ai/mcp/servers/zjiw1ry8ly"><img width="380" height="200" src="https://glama.ai/mcp/servers/zjiw1ry8ly/badge" alt="Cloudinary Server MCP server" /></a>
+✅ ChatGPT Apps  
+✅ Goose  
+✅ Any MCP host
 
-## Installation
+This repo is used in the workshop:
 
-### Requirements: Node.js
+> **“Plug Your MCP App into ChatGPT”**
 
-1. Install Node.js (version 18 or higher) and npm from [nodejs.org](https://nodejs.org/)
-2. Verify installation:
-   ```bash
-   node --version
-   npm --version
-   ```
+It demonstrates how to:
 
-### Install using npx (Recommended)
-1. Navigate to the Claude configuration directory:
+- Convert an MCP App into a ChatGPT-compatible app
+- Serve MCP over Streamable HTTP
+- Host it on Railway
+- Use one server for Goose + ChatGPT
 
-   - Windows: `C:\Users\NAME\AppData\Roaming\Claude`
-   - macOS: `~/Library/Application Support/Claude/`
-   
-   You can also find these directories inside the Claude Desktop app: Claude Desktop > Settings > Developer > Edit Config
+---
 
-2. Add the following configuration to your MCP settings file:
+## Architecture Overview
 
-```json
-{
-  "mcpServers": {
-    "cloudinary": {
-      "command": "npx",
-      "args": ["@felores/cloudinary-mcp-server@latest"],
-      "env": {
-        "CLOUDINARY_CLOUD_NAME": "your_cloud_name",
-        "CLOUDINARY_API_KEY": "your_api_key",
-        "CLOUDINARY_API_SECRET": "your_api_secret"
-      }
-    }
-  }
-}
+```
+ChatGPT
+   ↓
+Streamable HTTP (Railway)
+   ↓
+Cloudinary MCP Server
+   ↓
+Cloudinary API
 ```
 
-3. Make sure to replace the environment variables with your Cloudinary credentials from the [Cloudinary Console](https://console.cloudinary.com/settings/api-keys).
+The same server supports:
 
-### Developer Installation
-If you want to modify the server or contribute to development:
+- Goose MCP Apps (ui:// resources)
+- ChatGPT Apps SDK (skybridge template + structured output)
 
-1. Clone the repository:
-```bash
-git clone https://github.com/felores/cloudinary-mcp-server.git
-cd cloudinary-mcp-server
+---
+
+## Features
+
+- Upload images/videos to Cloudinary
+- Interactive UI preview
+- Works in ChatGPT + Goose
+- Structured tool output for ChatGPT
+- MCP App UI for Goose
+- Remote Streamable HTTP deployment
+- Stateless server (safe for hosting)
+
+---
+
+## Requirements
+
+- Node.js 18+
+- Cloudinary account
+
+Get credentials:
+
+👉 https://console.cloudinary.com/settings/api-keys
+
+You’ll need:
+
+```
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
 ```
 
-2. Install dependencies and build:
-```bash
-npm install
-npm run build
-```
+---
 
-## Setup Instructions
+## Local Development
 
-1. First, ensure you have a Cloudinary account and get your credentials from the [Cloudinary Console](https://console.cloudinary.com/settings/api-keys):
-   - Cloud Name
-   - API Key
-   - API Secret
+### Install
 
-2. Add the server configuration to your Claude/Cline MCP settings file:
-
-```json
-{
-  "mcpServers": {
-    "cloudinary": {
-      "command": "node",
-      "args": ["c:/path/to/cloudinary-mcp-server/dist/index.js"],
-      "env": {
-        "CLOUDINARY_CLOUD_NAME": "your_cloud_name",
-        "CLOUDINARY_API_KEY": "your_api_key",
-        "CLOUDINARY_API_SECRET": "your_api_secret"
-      }
-    }
-  }
-}
-```
-
-For Claude desktop app, edit the configuration file at the appropriate location for your OS.
-
-3. Install dependencies and build the server:
 ```bash
 npm install
-npm run build
 ```
 
-## Available Tools
+### Run dev server
+
+```bash
+npm run dev
+```
+
+Server runs at:
+
+```
+http://localhost:3000
+```
+
+Health check:
+
+```
+GET /
+```
+
+MCP endpoint:
+
+```
+POST /mcp
+```
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the project root:
+
+```
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+```
+
+Do NOT commit this file.
+
+---
+
+## Deploy to Railway
+
+1. Push repo to GitHub
+2. Go to https://railway.app
+3. New Project → Deploy from GitHub
+4. Select this repo
+5. Add environment variables in Railway dashboard
+6. Deploy
+
+Railway will give you a URL:
+
+```
+https://your-app.up.railway.app
+```
+
+Your MCP endpoint becomes:
+
+```
+https://your-app.up.railway.app/mcp
+```
+
+---
+
+## Connect to Goose
+
+Add a remote extension:
+
+```
+goose configure
+```
+
+Choose:
+
+```
+Remote Extension (Streamable HTTP)
+```
+
+Endpoint:
+
+```
+https://your-app.up.railway.app/mcp
+```
+
+Now Goose can call the Cloudinary upload tool.
+
+---
+
+## Connect to ChatGPT
+
+In ChatGPT:
+
+Add a custom MCP app using the same endpoint:
+
+```
+https://your-app.up.railway.app/mcp
+```
+
+ChatGPT will:
+
+- load the template UI
+- inject structured tool output
+- render the upload preview
+
+---
+
+## Available Tool
 
 ### upload
 
-Upload images and videos to Cloudinary.
+Uploads media to Cloudinary.
 
 Parameters:
-- `file` (required): Path to file, URL, or base64 data URI to upload
-- `resource_type` (optional): Type of resource ('image', 'video', or 'raw')
-- `public_id` (optional): Custom public ID for the uploaded asset
-- `overwrite` (optional): Whether to overwrite existing assets with the same public ID
-- `tags` (optional): Array of tags to assign to the uploaded asset
 
-Example usage in Claude/Cline:
-```typescript
-use_mcp_tool({
-  server_name: "cloudinary",
-  tool_name: "upload",
-  arguments: {
-    file: "path/to/image.jpg",
-    resource_type: "image",
-    public_id: "my-custom-id"
-  }
-});
+- `file_path` — local path (Goose)
+- `file` — URL or data URI (ChatGPT)
+- `resource_type` — image/video/raw
+- `public_id`
+- `overwrite`
+- `tags`
+
+Returns:
+
+- JSON metadata
+- interactive UI
+- ChatGPT structured output
+
+---
+
+## Workshop Goals
+
+This project teaches:
+
+- MCP server structure
+- Streamable HTTP hosting
+- ChatGPT adapter pattern
+- Template + structuredContent bridge
+- Cross-host UI compatibility
+
