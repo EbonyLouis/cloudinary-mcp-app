@@ -16,6 +16,7 @@ import {
   addChatGptToolMeta,
   buildChatGptStructuredContent,
   isChatGptTemplateUri,
+  createChatGptTemplateUI
 } from "./chatgpt-adapter.js";
 
 class UiStore {
@@ -157,41 +158,47 @@ export class CloudinaryServer {
     }));
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const { uri } = request.params;
-      const html = this.uiStore.get(uri);
-      if (!html) throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
-
-      const isTemplate = isChatGptTemplateUri(uri);
-      const mimeType = isTemplate ? "text/html+skybridge" : "text/html;profile=mcp-app";
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType,
-            text: html,
-            _meta: isTemplate
-              ? {
-                  "openai/widgetDescription": "Cloudinary upload viewer",
-                  "openai/widgetCSP": {
-                    connect_domains: ["https://res.cloudinary.com"],
-                    resource_domains: ["https://res.cloudinary.com"],
-                  },
-                  "openai/widgetPrefersBorder": true,
-                }
-              : {
-                  ui: {
-                    csp: {
-                      connectDomains: ["https://res.cloudinary.com"],
-                      resourceDomains: ["https://res.cloudinary.com"],
+        const { uri } = request.params;
+      
+        const isTemplate = isChatGptTemplateUri(uri);
+      
+        // ✅ Deterministic: always generate template HTML on demand
+        const html = isTemplate ? createChatGptTemplateUI() : this.uiStore.get(uri);
+      
+        if (!html) {
+          throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${uri}`);
+        }
+      
+        const mimeType = isTemplate ? "text/html+skybridge" : "text/html;profile=mcp-app";
+      
+        return {
+          contents: [
+            {
+              uri,
+              mimeType,
+              text: html,
+              _meta: isTemplate
+                ? {
+                    "openai/widgetDescription": "Cloudinary upload viewer",
+                    "openai/widgetCSP": {
+                      connect_domains: ["https://res.cloudinary.com"],
+                      resource_domains: ["https://res.cloudinary.com"],
                     },
-                    prefersBorder: true,
+                    "openai/widgetPrefersBorder": true,
+                  }
+                : {
+                    ui: {
+                      csp: {
+                        connectDomains: ["https://res.cloudinary.com"],
+                        resourceDomains: ["https://res.cloudinary.com"],
+                      },
+                      prefersBorder: true,
+                    },
                   },
-                },
-          },
-        ],
-      };
-    });
+            },
+          ],
+        };
+    });      
   }
 
   // ---------------- Upload logic ----------------
