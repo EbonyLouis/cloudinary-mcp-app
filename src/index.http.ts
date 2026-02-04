@@ -14,6 +14,23 @@ app.get("/", (_req, res) => {
   res.json({ name: "cloudinary-mcp-server", status: "running", mcp: "/mcp" });
 });
 
+
+// Force SSE negotiation for ChatGPT connector validation
+app.use("/mcp", (req, _res, next) => {
+    const accept = req.headers["accept"];
+  
+    // Some clients (like ChatGPT connector validation) may not send the SSE accept header.
+    // The MCP Streamable HTTP transport requires the client to accept text/event-stream.
+    if (typeof accept !== "string" || !accept.includes("text/event-stream")) {
+      req.headers["accept"] = accept
+        ? `${accept}, text/event-stream`
+        : "application/json, text/event-stream";
+    }
+  
+    next();
+  });  
+
+
 app.post("/mcp", async (req, res) => {
   const server = new CloudinaryServer(); // ✅ no args
 
