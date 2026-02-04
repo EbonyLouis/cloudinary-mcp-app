@@ -21,7 +21,7 @@ function requireEnv(name: string) {
  * Deterministic MCP Apps UI URI (portable across Goose + ChatGPT).
  * The UI hydrates from tool-result notifications / tool output.
  */
-const UPLOAD_UI_URI = "ui://cloudinary/upload-v3";
+const UPLOAD_UI_URI = "ui://cloudinary/upload-v4";
 const DEMO_UI_URI = "ui://cloudinary/demo";
 
 export class CloudinaryServer {
@@ -442,45 +442,10 @@ export class CloudinaryServer {
         window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
       }
 
-    async init() {
-        const initRes = await this.request("ui/initialize", {
-            subscriptions: {
-                toolInput: true,
-                toolResult: true
-            }
-        });
-
-        this.reportSize();
-
-        const upload =
-            initRes?.structuredContent?.upload ||
-            initRes?.result?.structuredContent?.upload ||
-            initRes?.toolResult?.structuredContent?.upload ||
-            initRes?.tool_result?.structuredContent?.upload;
-
-        if (upload) {
-            this.latestUpload = upload;
-            render(upload);
+        async init() {
+            await this.request("ui/initialize", {});
             this.reportSize();
         }
-
-        // ChatGPT extension fallback
-        const openai = window.openai;
-        const uploadFromOpenAI =
-            openai?.toolOutput?.upload ||
-            openai?.toolOutput?.structuredContent?.upload ||
-            openai?.toolOutput?.result?.structuredContent?.upload;
-
-        if (uploadFromOpenAI) {
-            this.latestUpload = uploadFromOpenAI;
-            render(uploadFromOpenAI);
-            this.reportSize();
-        }
-    }
-
-
-
-
 
 
       reportSize() {
